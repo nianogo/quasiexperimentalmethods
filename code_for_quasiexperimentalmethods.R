@@ -60,6 +60,7 @@ p_load("tidyverse","magrittr","broom",        #Manipulate data
   Valid_controls=T #Whether invalid controls have been introduced
   n_treated=1 #How many treated have been included
   treated_states="California" #Which state is treated
+  LinearTrends=T #Are the outcome trends linear?
   
   #-----creating IDs-----------
   n_state     =50
@@ -90,7 +91,7 @@ p_load("tidyverse","magrittr","broom",        #Manipulate data
   b6=1    #xt:time-varying
   b7=3    #xit:unit-time-varying
   tau=100 #ATT
-  be_crtl=200
+  be_crtl=100
   cov_imbalance=5 
   
   #-----treated and post-----------  
@@ -100,17 +101,24 @@ p_load("tidyverse","magrittr","broom",        #Manipulate data
   treatedpost <- treated*post
   
   #-----Variables (long format)-----------
-  xt = rep(rnorm(n_year, mean = 1 + 0.5*years, sd=1), times=n_state)        + be_crtl*violated_crtl*(1-Valid_controls)
+ xt = rep(rnorm(n_year, mean = 1 + 0.5*years, sd=1), times=n_state)    
   xi = rep(rnorm(n_state, mean = 2, sd=1) , each=n_year)                    + cov_imbalance*treated
   
-  lambda1t = rep(rnorm(n_year,  mean =0 + 2*years, sd=1), times=n_state)    + be_crtl*violated_crtl*(1-Valid_controls)
+  lambda1t = rep(rnorm(n_year,  mean =0 + 2*years, sd=1), times=n_state)   
   ui1 = rep(rnorm(n_state, mean = 2, sd=1) , each=n_year)                   + cov_imbalance*treated
   
-  lambda2t = rep(rnorm(n_year,  mean = 0.2*years, sd=1), times=n_state)     + be_crtl*violated_crtl*(1-Valid_controls)
+  lambda2t = rep(rnorm(n_year,  mean = 0.7*years, sd=1), times=n_state)    
   ui2 = rep(rnorm(n_state, mean = 3, sd=1) , each=n_year)                   + cov_imbalance*treated
   
-  lambda3t = rep(rnorm(n_year,  mean = 0.2*years, sd=1), times=n_state)     + be_crtl*violated_crtl*(1-Valid_controls) 
+  lambda3t = rep(rnorm(n_year,  mean = 0.2*years, sd=1), times=n_state)    
   ui3 = rep(rnorm(n_state, mean = 0, sd=3) , each=n_year)                   + cov_imbalance*treated
+  
+  lambda4t = rep(rnorm(n_year,  mean = years, sd=1), times=n_state)   
+  lambda4t_rescaled = lambda4t/year_policy
+  
+  lambda5t = rep(rnorm(n_year,  mean = 10, sd=1), times=n_state) 
+  ui5 = rep(rnorm(n_state, mean = 2, sd=1) , each=n_year)                   + cov_imbalance*treated
+  ifeit5 = as.numeric(ui5*lambda5t)
   
   xit = as.numeric(ui3*lambda3t) 
   
@@ -123,12 +131,14 @@ p_load("tidyverse","magrittr","broom",        #Manipulate data
     b0     + 
     b1*ui1 + 
     b2*lambda1t +
+    be_crtl*ifeit5*violated_crtl*(1-Valid_controls) +
     b3*(1-PTrend)*ui2*lambda2t +
     b4*(1-Cshock)*treatedpost + 
     b5*xi  +  
     b6*xt  +    
     b7*xit +  
-    epsilon
+    (b8*(lambda4t_rescaled^2))*(1-LinearTrends) +
+  epsilon
   
   df <- tibble(state, state_num, year, treated, post, treatedpost, y_cf0,
                xit,xt, xi, 
