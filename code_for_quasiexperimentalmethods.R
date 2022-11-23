@@ -55,106 +55,101 @@ p_load("tidyverse","magrittr","broom",        #Manipulate data
 
   set.seed(123)
   
-  PTrend=T #Whether the parallel trend assumption is met
-  Cshock=T #Whether the common shock assumption is met
-  Valid_controls=T #Whether invalid controls have been introduced
-  n_treated=1 #How many treated have been included
-  treated_states="California" #Which state is treated
-  LinearTrends=T #Are the outcome trends linear?
+      # PTrend=T : Whether the parallel trend assumption is met
+      # Cshock=T : Whether the common shock assumption is met
+      # Valid_controls=T, Whether invalid controls have been introduced
+      # LinearTrends=T, Whether the outcome trends are linear
+
+      #-----creating IDs-----------
+      n_state     =50
+      n_treated   =n_treated
+      
+      year_start  =1
+      year_end    =50
+      year_policy <<-40
+      n_year      =length(seq(year_start, year_end, 1))
+      states      = state.name[1:n_state]
+      years       = 1:n_year
+      state_nums  = 1:n_state
+      
+      state       = rep(states, each = n_year)
+      state_num   = as.numeric(as.factor(state))
+      
+      year        = rep(years, times = n_state)
+      
+      violated_crtl <-  ifelse(state_num %in% c(10, 27:50), 1, 0)
+
+      #-----Parameters-----------
+      b0=1    #intercept
+      b1=1    #ui1
+      b2=20   #lambda1t
+      b3=1     #linear trend
+      b4=0.15  #Parallel trend
+      b5=100   #Common shock
+      b6=0.001 #invalid controls
+      b7=1    #xi:unit-varying
+      b8=1    #xt:time-varying
+      b9=1    #xit:unit-time-varying
+      tau=100 #ATT
+      
+      treated <- ifelse(state %in% treated_states, 1, 0)
+      
+      post <-  ifelse(year >= year_policy, 1, 0)
+      treatedpost <- treated*post
+      
+      convexhullupper = as.numeric(state_num==3)
+      convexhulllower = as.numeric(state_num==4)
   
-  #-----creating IDs-----------
-  n_state     =50
-  n_treated   =n_treated
+      #unit-varying covariates
+      
+      xi  = 2*treated + rep(rnorm(n_state, mean=5, sd=1), each=n_year)  +
+        -5*convexhulllower  + 5*convexhullupper
+      ui1 = 2*treated + rep(rnorm(n_state, mean=5, sd=1), each=n_year)  +
+        -5*convexhulllower  + 5*convexhullupper
+      ui2 = 2*treated + rep(rnorm(n_state, mean=5, sd=1), each=n_year)  +
+        -5*convexhulllower  + 5*convexhullupper
+      ui3 = 1         + rep(rnorm(n_state, mean=5, sd=1), each=n_year)  +
+        -5*convexhulllower  + 5*convexhullupper 
   
-  year_start  =1
-  year_end    =50
-  year_policy <<-40
-  n_year      =length(seq(year_start, year_end, 1))
-  states      = state.name[1:n_state]
-  years       = 1:n_year
-  state_nums  = 1:n_state
-  
-  state       = rep(states, each = n_year)
-  state_num   = as.numeric(as.factor(state))
-  
-  year        = rep(years, times = n_state)
-  
-  violated_crtl=(state_num %in% 6:10) #list_violated_crtl_num
-  
-  #-----Parameters-----------
-  b0=1    #intercept
-  b1=1    #ui1
-  b2=1    #lambda1t
-  b3=1    #IFE
-  b4=32   #Common shock (U)
-  b5=1    #xi:unit-varying
-  b6=1    #xt:time-varying
-  b7=3    #xit:unit-time-varying
-  tau=100 #ATT
-  be_crtl=100
-  cov_imbalance=5 
-  
-  #-----treated and post-----------  
-  treated <- ifelse(state %in% treated_states, 1, 0)
-  
-  post <-  ifelse(year >= year_policy, 1, 0)
-  treatedpost <- treated*post
-  
-  #-----Variables (long format)-----------
- xt = rep(rnorm(n_year, mean = 1 + 0.5*years, sd=1), times=n_state)    
-  xi = rep(rnorm(n_state, mean = 2, sd=1) , each=n_year)                    + cov_imbalance*treated
-  
-  lambda1t = rep(rnorm(n_year,  mean =0 + 2*years, sd=1), times=n_state)   
-  ui1 = rep(rnorm(n_state, mean = 2, sd=1) , each=n_year)                   + cov_imbalance*treated
-  
-  lambda2t = rep(rnorm(n_year,  mean = 0.7*years, sd=1), times=n_state)    
-  ui2 = rep(rnorm(n_state, mean = 3, sd=1) , each=n_year)                   + cov_imbalance*treated
-  
-  lambda3t = rep(rnorm(n_year,  mean = 0.2*years, sd=1), times=n_state)    
-  ui3 = rep(rnorm(n_state, mean = 0, sd=3) , each=n_year)                   + cov_imbalance*treated
-  
-  lambda4t = rep(rnorm(n_year,  mean = years, sd=1), times=n_state)   
-  lambda4t_rescaled = lambda4t/year_policy
-  
-  lambda5t = rep(rnorm(n_year,  mean = 10, sd=1), times=n_state) 
-  ui5 = rep(rnorm(n_state, mean = 2, sd=1) , each=n_year)                   + cov_imbalance*treated
-  ifeit5 = as.numeric(ui5*lambda5t)
-  
-  xit = as.numeric(ui3*lambda3t) 
-  
-  ifeit = as.numeric(ui2*lambda2t)
-  
-  epsilon = rnorm(n_state*n_year, mean = 0, sd=1)
-  
-  
-  y_cf0 = 
-    b0     + 
-    b1*ui1 + 
-    b2*lambda1t +
-    be_crtl*ifeit5*violated_crtl*(1-Valid_controls) +
-    b3*(1-PTrend)*ui2*lambda2t +
-    b4*(1-Cshock)*treatedpost + 
-    b5*xi  +  
-    b6*xt  +    
-    b7*xit +  
-    (b8*(lambda4t_rescaled^2))*(1-LinearTrends) +
-  epsilon
-  
-  df <- tibble(state, state_num, year, treated, post, treatedpost, y_cf0,
-               xit,xt, xi, 
-               ui1, 
-               ui2, 
-               lambda1t,
-               lambda2t,
-               ifeit,
-               ifeit_real = b3*ifeit,
-               epsilon) 
-  
-  mydata <-  within(df,{
-    y_cf1 <- y_cf0 + tau
-    y <- y_cf1*treatedpost + (1-treatedpost)*y_cf0
-  })
-  
+
+       #time-varying covariates
+      xt = rep(rnorm(n_year, mean = 1 + 0.5*years, sd=1), times=n_state)     
+      
+      lambda1t = year
+      lambda1nonlinear =        (0*I(year %in%  0:9) +
+                                 5*I(year %in% 10:29)  +
+                                 -10*I(year %in%  30:39)  +
+                                 50*I(year %in% 40:44) +
+                                 100*I(year %in% 45:50))
+
+      lambda2t = (1-treated)*(3 + 10*year*I(year<=40))
+      lambda3t = year^3
+      
+      #unit-time varying covariates
+      xit = rnorm(n_year*n_state, mean=0, sd=1) 
+      
+      uit = rnorm(n_year*n_state, mean=0, sd=1)
+      
+      #epsilon
+      epsilon = rnorm(n_state*n_year, mean = 0, sd=1)
+      
+      #Potential outcomes
+      y_cf0 = b0 + 
+        b1*ui1 + 
+        b2*lambda1t + 
+        b3*lambda1nonlinear*(1-LinearTrends) + 
+        b4*ui2*lambda2t*(1-PTrend) + 
+        b5*treatedpost*(1-Cshock)  + 
+        b6*ui3*lambda3t*violated_crtl*(1-Valid_controls) + 
+        b7*xi + b8*xt + b9*xit + epsilon
+      
+      y_cf1 = y_cf0 + tau
+      
+      y = treatedpost*y_cf1 + (1-treatedpost)*y_cf0
+      
+      
+      mydata <- tibble(state, violated_crtl, state_num, year, treated, post, treatedpost, y, y_cf0,y_cf1,
+                   xit,xt, xi) 
 
 
 ###############################################################################-
@@ -185,7 +180,7 @@ panelView(y ~ treatedpost, data = mydata, index = c("state","year"), pre.post = 
 dt <- mydata %>%
   select(state,year, post, xi, xt, xit, y) %>% 
   filter(state=="California",
-         year %in% c(35, 45)) 
+         year %in% c(39, 45)) 
 
 
 ##Step2:Preview the data---
@@ -225,7 +220,7 @@ pre_post
 dt <- mydata %>%
   select(state,year, post, treated, xi, xt, xit, y) %>% 
   filter(state=="California" | state=="Georgia",
-         year %in% c(35, 45)) 
+         year %in% c(39, 45)) 
 
 
 ##Step2:Preview the data---
@@ -328,7 +323,7 @@ dt %>%
 
 ##Step4:Analyze the data---
 p_load("estimatr")
-dta <- lm_robust(y ~ treated*post + factor(year) + xit, 
+dta <- lm_robust(y ~ treated*post + xit, 
                  data = dt, 
                  se_type = "stata")
 dta
@@ -417,7 +412,7 @@ summary(res_pretrend)
 # Don't forget to add any other time-varying covariates
 #Method 1: Lm_robust()
 p_load("estimatr")
-dta <- lm_robust(y ~ treated*post + factor(year) + xit, 
+dta <- lm_robust(y ~ treated*post + xit, 
                  data = dt, 
                  fixed_effects=state,
                  clusters = state, 
@@ -577,7 +572,7 @@ synth.out <- synth(dataprep.out, Sigf.ipop=2)
 ## to each unit listed as control, one at a time, and generate their
 ## synthetic versions. Sigf.ipop = 2 for faster computing time. 
 ## Increase to the default of 5 for better estimates. 
-tdf <- generate_placebos(dataprep.out,synth.out, Sigf.ipop = 2, strategy='multiprocess')
+tdf <- generate.placebos(dataprep.out,synth.out, Sigf.ipop = 2, strategy='multiprocess')
 
 ## Plot the gaps in outcome values over time of each unit --
 ## treated and placebos -- to their synthetic controls
